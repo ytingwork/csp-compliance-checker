@@ -1,0 +1,586 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CSP 合規性檢測工具</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.44.0/tabler-icons.min.css">
+
+  <style>
+    :root {
+      --color-background-primary: #1e1e24;
+      --color-background-secondary: #2b2b36;
+      --color-background-tertiary: #3a3a47;
+      --color-border-secondary: #3f3f4e;
+      --color-border-tertiary: #323240;
+      --color-text-primary: #f5f5f6;
+      --color-text-secondary: #a1a1aa;
+      --color-text-tertiary: #71717a;
+      --color-critical: #f43f5e;
+      --color-high: #f97316;
+      --color-medium: #eab308;
+      --color-low: #10b981;
+      --color-background-action-primary: #4f46e5;
+      --color-text-on-action: #ffffff;
+      --border-radius-md: 8px;
+      --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    }
+    body { background-color: var(--color-background-primary); color: var(--color-text-primary); font-family: system-ui, -apple-system, sans-serif; margin: 0; padding: 20px; }
+    .donut-chart-container { width: 120px; height: 120px; border-radius: 50%; background: var(--color-border-secondary); display: flex; align-items: center; justify-content: center; position: relative; }
+    .donut-inner { width: 90px; height: 90px; background-color: var(--color-background-secondary); border-radius: 50%; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; z-index: 10; }
+    .donut-label { font-size: 11px; color: var(--color-text-secondary); }
+    .donut-value { font-size: 20px; font-weight: 600; color: var(--color-text-primary); line-height: 1; margin-top: 2px; }
+    .legend-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 8px; }
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--color-border-secondary); border-radius: 4px; }
+  </style>
+</head>
+<body>
+
+<div style="padding: 1rem 0; max-width: 1200px; margin: 0 auto;">
+
+  <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-bottom: 4px;">
+    <div style="display: flex; align-items: center; gap: 10px;">
+      <i class="ti ti-shield-check" style="font-size: 24px; color: var(--color-low);" aria-hidden="true"></i>
+      <span style="font-size: 20px; font-weight: 600; color: var(--color-text-primary);">CSP 合規性檢測工具</span>
+      <span id="version-badge" style="font-size: 12px; background: rgba(16, 185, 129, 0.15); color: var(--color-low); padding: 4px 10px; border-radius: 12px; font-weight: 500;">介面驗收模式</span>
+    </div>
+
+    <div style="display: flex; align-items: center; gap: 12px;">
+      <button onclick="document.getElementById('config-input-hidden').click()" style="padding: 6px 12px; font-size: 12px; background: transparent; border: 1px dashed var(--color-text-tertiary); color: var(--color-text-secondary); border-radius: var(--border-radius-md); cursor: pointer; display: flex; align-items: center; gap: 4px;">
+        <i class="ti ti-settings-automation"></i> 匯入自訂資安配置 (.json)
+      </button>
+      <input id="config-input-hidden" type="file" accept=".json" style="display:none;" onchange="onConfigImport(event)">
+
+      <div style="display: flex; align-items: center; gap: 8px; background: var(--color-background-secondary); padding: 8px 14px; border-radius: var(--border-radius-md); border: 1px solid var(--color-border-secondary);">
+        <input type="checkbox" id="ignore-engineering" checked onchange="onFilterToggle()" style="cursor: pointer; width: 15px; height: 15px;">
+        <label for="ignore-engineering" style="font-size: 13px; color: var(--color-text-primary); cursor: pointer; user-select: none; font-weight: 500;">
+          忽略底層代碼 (eval/授權)
+        </label>
+      </div>
+    </div>
+  </div>
+  
+  <p style="font-size: 13px; color: var(--color-text-secondary); margin: 0 0 1.5rem 34px;" id="tool-sub-desc">
+    支援拖放 ZIP 壓縮檔或整個資料夾，本機將批次掃描所有 HTML / JS / CSS 檔案
+  </p>
+
+  <div id="dashboard-panel" style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 1.5rem;">
+    <div style="background: var(--color-background-secondary); border-radius: var(--border-radius-md); padding: 24px; border: 1px solid var(--color-border-tertiary);">
+      <div style="font-size: 14px; font-weight: 600; letter-spacing: 0.5px; margin-bottom: 24px; color: var(--color-text-secondary);">SUMMARY</div>
+      <div style="display: flex; gap: 40px;">
+        <div>
+          <div style="font-size: 12px; color: var(--color-text-secondary); margin-bottom: 8px;">Total Files Scanned</div>
+          <div style="font-size: 36px; font-weight: 600; color: var(--color-text-primary);" id="dash-total-files">0</div>
+        </div>
+        <div>
+          <div style="font-size: 12px; color: var(--color-text-secondary); margin-bottom: 8px;">Total Issues</div>
+          <div style="font-size: 36px; font-weight: 600; color: var(--color-text-primary);" id="dash-total-issues">0</div>
+        </div>
+      </div>
+    </div>
+
+    <div style="background: var(--color-background-secondary); border-radius: var(--border-radius-md); padding: 24px; display: flex; align-items: center; justify-content: space-around; border: 1px solid var(--color-border-tertiary);">
+      <div id="dash-donut" class="donut-chart-container">
+        <div class="donut-inner">
+          <span class="donut-label">Total</span>
+          <span class="donut-value" id="dash-donut-total">0</span>
+        </div>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 12px;">
+        <div id="legend-crit-container" style="display: flex; align-items: center; font-size: 13px; opacity: 0.4; transition: opacity 0.2s;">
+          <span class="legend-dot" style="background: var(--color-critical);"></span>
+          <span style="width: 130px; color: var(--color-text-secondary);" id="label-crit-text">Unsafe / Eval (已忽略)</span>
+          <span style="font-weight: 600; color: var(--color-text-primary);" id="dash-crit-val">0</span>
+        </div>
+        <div style="display: flex; align-items: center; font-size: 13px;">
+          <span class="legend-dot" style="background: var(--color-high);"></span>
+          <span style="width: 130px; color: var(--color-text-secondary);">Inline JS / CSS Exp</span>
+          <span style="font-weight: 600; color: var(--color-text-primary);" id="dash-high-val">0</span>
+        </div>
+        <div style="display: flex; align-items: center; font-size: 13px;">
+          <span class="legend-dot" style="background: var(--color-medium);"></span>
+          <span style="width: 130px; color: var(--color-text-secondary);">Inline Style</span>
+          <span style="font-weight: 600; color: var(--color-text-primary);" id="dash-med-val">0</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div style="margin-bottom: 1.25rem; display: flex; align-items: center; justify-content: space-between;">
+    <p id="mode-desc" style="font-size: 12px; color: var(--color-text-tertiary); margin: 0 0 0 2px;">
+      提示：預設精準捕捉畫面層違規。取消勾選上方核取方塊可開啟完整資安稽核。
+    </p>
+    <div style="display: flex; gap: 8px;">
+      <button onclick="clearAll()" style="padding: 8px 16px; font-size: 13px; background: transparent; border: 1px solid var(--color-border-secondary); color: var(--color-text-primary); border-radius: var(--border-radius-md); cursor: pointer; display: flex; align-items: center; gap: 6px;">
+        <i class="ti ti-refresh" aria-hidden="true"></i> 清除重置
+      </button>
+      <button id="btn-check" onclick="runCheck()" style="padding: 8px 20px; font-size: 13px; background: var(--color-background-action-primary); color: white; border: none; border-radius: var(--border-radius-md); cursor: pointer; display: flex; align-items: center; gap: 6px; font-weight: 500;">
+        <i class="ti ti-scan" aria-hidden="true"></i> 開始分析
+      </button>
+    </div>
+  </div>
+
+  <div id="drop-zone" ondragover="onDragOver(event)" ondragleave="onDragLeave(event)" ondrop="onDrop(event)" style="border: 1.5px dashed var(--color-border-secondary); border-radius: var(--border-radius-md); padding: 32px 20px; text-align: center; transition: all 0.2s; background: var(--color-background-secondary); position: relative;">
+    <i class="ti ti-cloud-upload" style="font-size: 32px; color: var(--color-text-tertiary); display: block; margin-bottom: 12px;" aria-hidden="true"></i>
+    <div style="font-size: 15px; font-weight: 500; color: var(--color-text-primary); margin-bottom: 6px;">拖放檔案、資料夾 或 ZIP 壓縮檔至此</div>
+    <div style="font-size: 13px; color: var(--color-text-secondary); margin-bottom: 16px;">支援直接拖放整個資料夾 &nbsp;·&nbsp; 自動跳過圖片與 .min.js</div>
+    <div style="display: flex; gap: 10px; justify-content: center;">
+      <button onclick="document.getElementById('file-input-hidden').click()" style="padding: 7px 16px; font-size: 13px; background: var(--color-background-tertiary); border: 1px solid var(--color-border-secondary); color: var(--color-text-primary); border-radius: var(--border-radius-md); cursor: pointer; display: inline-flex; align-items: center; gap: 6px;">
+        <i class="ti ti-files" aria-hidden="true"></i> 選擇檔案
+      </button>
+      <button onclick="document.getElementById('folder-input-hidden').click()" style="padding: 7px 16px; font-size: 13px; background: var(--color-background-tertiary); border: 1px solid var(--color-border-secondary); color: var(--color-text-primary); border-radius: var(--border-radius-md); cursor: pointer; display: inline-flex; align-items: center; gap: 6px;">
+        <i class="ti ti-folder-open" aria-hidden="true"></i> 選擇資料夾
+      </button>
+    </div>
+    <input id="file-input-hidden" type="file" accept=".zip,.html,.htm,.js,.css" multiple style="display:none;" onchange="onFileInputChange(event)">
+    <input id="folder-input-hidden" type="file" webkitdirectory multiple style="display:none;" onchange="onFileInputChange(event)">
+  </div>
+
+  <div id="file-list-area" style="margin-top: 12px; display: none; background: var(--color-background-secondary); padding: 12px; border-radius: var(--border-radius-md); border: 1px solid var(--color-border-tertiary);">
+    <div style="font-size: 12px; color: var(--color-text-secondary); margin-bottom: 8px; display: flex; justify-content: space-between;" id="file-list-label"></div>
+    <div id="file-chips" style="display: flex; flex-wrap: wrap; gap: 8px; max-height: 120px; overflow-y: auto;"></div>
+  </div>
+
+  <details style="margin-top: 16px;">
+    <summary style="font-size: 13px; color: var(--color-text-secondary); cursor: pointer; user-select: none; list-style: none; display: inline-flex; align-items: center; gap: 4px;">
+      <i class="ti ti-code" style="font-size: 14px;" aria-hidden="true"></i> 手動貼上單段程式碼測試 (預設模擬 HTML 範疇)
+    </summary>
+    <textarea id="code-input" placeholder="貼上要檢測的 HTML / JS / CSS 程式碼..." style="margin-top: 12px; width: 100%; min-height: 150px; font-family: var(--font-mono); font-size: 13px; padding: 16px; box-sizing: border-box; border: 1px solid var(--color-border-secondary); border-radius: var(--border-radius-md); background: var(--color-background-secondary); color: var(--color-text-primary); resize: vertical;"></textarea>
+  </details>
+
+  <div id="result-area" style="margin-top: 2rem; display: none;">
+    <div style="font-size: 16px; font-weight: 600; margin-bottom: 16px; color: var(--color-text-primary); display: flex; align-items: center; gap: 8px;" id="result-title"></div>
+    <div id="result-content"></div>
+  </div>
+</div>
+
+<script>
+let CURRENT_RULES = [
+  {
+    type: "inline_js", label: "Inline JS 事件", severity: "high", category: "ui",
+    target_extensions: [".html", ".htm"],
+    regex: /\b(on(click|load|change|submit|blur|focus|keyup|keydown|mouseover|mouseout|input|reset|error|scroll))\s*=/gi,
+    description: "在 HTML 標籤內直接使用 inline 事件監聽器，這在嚴格的 CSP 政策下會被阻擋。",
+    fix: "請將事件抽離，改在外部 JS 使用 addEventListener 進行綁定。"
+  },
+  {
+    type: "inline_style", label: "Inline Style", severity: "medium", category: "ui",
+    target_extensions: [".html", ".htm"],
+    regex: /\bstyle\s*=\s*["'][^"']*["']/gi,
+    description: "在 HTML 標籤上直接使用 style 屬性定義樣式。",
+    fix: "建議將樣式抽取至獨立的 CSS 檔案或改用 Class 樣式表控制。"
+  },
+  {
+    type: "inline_js", label: "CSS Expression", severity: "high", category: "ui",
+    target_extensions: [".html", ".htm", ".css"],
+    regex: /\bexpression\s*\([^)]*\)/gi,
+    description: "CSS 內嵌了動態執行的 JavaScript (expression 寫法)，這已被現代瀏覽器棄用且嚴重違反 CSP。",
+    fix: "此為老舊 IE 相容寫法，在現代網頁中請直接移除該行程式碼。"
+  },
+  {
+    type: "unsafe_eval", label: "Unsafe-eval", severity: "critical", category: "engineering",
+    target_extensions: [".html", ".htm", ".js"],
+    regex: /\beval\s*\(|new\s+Function\s*\(|setTimeout\s*\(\s*["'][^"']*["']|setInterval\s*\(\s*["'][^"']*["']/gi,
+    description: "使用了 eval() 或將字串動態解析為程式碼的函式呼叫。",
+    fix: "此屬底層工程邏輯，請交由工程師改用標準匿名函式或 JSON.parse 處理。"
+  },
+  {
+    type: "banned_package", label: "禁用套件", severity: "critical", category: "engineering",
+    target_extensions: [".html", ".htm", ".js"],
+    regex: /(?:bootstrap(?:\.min)?\.js|jquery-ui(?:\.min)?\.js)/gi,
+    description: "偵測到引入了資安政策中列為禁用的老舊或特定開源套件群（如 Bootstrap / jQuery UI）。",
+    fix: "請確認專案規範，改用符合公司合規標準的 UI 組件庫。"
+  }
+];
+
+let loadedFiles = [];
+
+function onConfigImport(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(event) {
+    try {
+      const config = JSON.parse(event.target.result);
+      if (config.rules && Array.isArray(config.rules)) {
+        CURRENT_RULES = config.rules.map(r => ({
+          ...r,
+          regex: new RegExp(r.regex, "gi")
+        }));
+        document.getElementById('tool-sub-desc').innerHTML = `⚙️ 已成功載入自訂規則庫版本：<strong>${escHtml(config.version || '未指定')}</strong> (由 ${escHtml(config.last_updated_by || '資安團隊')} 提供)`;
+        alert(`成功匯入 ${config.rules.length} 條新資安過濾規範！`);
+        if (loadedFiles.length > 0) runCheck();
+      }
+    } catch(err) {
+      alert('配置檔解析錯誤，請確認是否為標準 JSON 格式。');
+    }
+  };
+  reader.readAsText(file);
+  e.target.value = '';
+}
+
+function onFilterToggle() {
+  const isIgnore = document.getElementById('ignore-engineering').checked;
+  const critContainer = document.getElementById('legend-crit-container');
+  const labelText = document.getElementById('label-crit-text');
+  const badge = document.getElementById('version-badge');
+
+  if (isIgnore) {
+    critContainer.style.opacity = '0.4';
+    labelText.textContent = 'Unsafe / Eval (已忽略)';
+    badge.textContent = '介面驗收模式';
+    badge.style.background = 'rgba(16, 185, 129, 0.15)';
+    badge.style.color = 'var(--color-low)';
+  } else {
+    critContainer.style.opacity = '1';
+    labelText.textContent = 'Unsafe / Eval';
+    badge.textContent = '資安稽核模式';
+    badge.style.background = 'rgba(244, 63, 94, 0.15)';
+    badge.style.color = 'var(--color-critical)';
+  }
+  if (loadedFiles.length > 0 || document.getElementById('code-input').value.trim() !== '') runCheck();
+}
+
+function onDragOver(e) { e.preventDefault(); const dz = document.getElementById('drop-zone'); dz.style.borderColor = '#4f46e5'; dz.style.background = 'var(--color-background-tertiary)'; }
+function onDragLeave(e) { const dz = document.getElementById('drop-zone'); dz.style.borderColor = ''; dz.style.background = 'var(--color-background-secondary)'; }
+
+// 🌟 修改點 1：拖放區加入攔截與提示
+async function onDrop(e) {
+  e.preventDefault(); onDragLeave(e);
+  const items = e.dataTransfer.items; if (!items) return;
+
+  // ⚠️ 必須在任何 await 之前同步收集所有 entry 與 file
+  // DataTransfer 物件在非同步後會被瀏覽器清空
+  const collected = [];
+  for (const item of items) {
+    const entry = item.webkitGetAsEntry ? item.webkitGetAsEntry() : null;
+    if (entry) {
+      collected.push({ type: 'entry', entry });
+    } else if (item.kind === 'file') {
+      const f = item.getAsFile();
+      if (f) collected.push({ type: 'file', file: f });
+    }
+  }
+
+  let skippedCount = 0;
+
+  for (const col of collected) {
+    if (col.type === 'entry') {
+      const entry = col.entry;
+      if (entry.isDirectory) {
+        await readDirectoryEntry(entry, entry.name);
+      } else if (entry.isFile) {
+        const file = await entryToFile(entry);
+        if (isZip(file.name)) {
+          await handleZipFile(file);
+        } else if (isTargetExt(file.name)) {
+          const text = await file.text(); addFile(file.name, file.name, text);
+        } else {
+          skippedCount++;
+        }
+      }
+    } else {
+      const f = col.file;
+      if (isZip(f.name)) {
+        await handleZipFile(f);
+      } else if (isTargetExt(f.name)) {
+        const text = await f.text(); addFile(f.name, f.name, text);
+      } else {
+        skippedCount++;
+      }
+    }
+  }
+
+  if (skippedCount > 0) {
+    alert(`已自動略過 ${skippedCount} 個非資安檢核類型的檔案（如圖片、影音或未支援格式）。`);
+  }
+  refreshFileList(); runCheck();
+}
+
+// 🌟 修改點 2：點擊選擇檔案加入攔截與非同步處理
+async function onFileInputChange(e) {
+  let skippedCount = 0;
+  const files = Array.from(e.target.files);
+  if (files.length === 0) return;
+
+  for (const f of files) {
+    if (isZip(f.name)) {
+      await handleZipFile(f);
+    } else if (isTargetExt(f.name)) { 
+      const text = await f.text(); addFile(f.name, f.name, text); 
+    } else {
+      skippedCount++;
+    }
+  }
+
+  e.target.value = ''; // 清空 input 狀態
+
+  if (skippedCount > 0) {
+    alert(`已自動略過 ${skippedCount} 個非資安檢核類型的檔案（如圖片或未支援格式）。`);
+  }
+  refreshFileList(); runCheck();
+}
+
+function readDirectoryEntry(dirEntry, basePath) {
+  return new Promise(resolve => {
+    const reader = dirEntry.createReader(); const allEntries = [];
+    function readBatch() {
+      reader.readEntries(async batch => {
+        if (!batch.length) {
+          for (const entry of allEntries) {
+            const path = `${basePath}/${entry.name}`;
+            if (entry.isDirectory) { if (!shouldSkipDir(entry.name)) await readDirectoryEntry(entry, path); }
+            else if (entry.isFile) {
+              const file = await entryToFile(entry);
+              if (isZip(file.name)) await handleZipFile(file, basePath);
+              else if (isTargetExt(file.name) && !isMinified(file.name)) { const text = await file.text(); addFile(entry.name, path, text); }
+            }
+          }
+          resolve();
+        } else { allEntries.push(...batch); readBatch(); }
+      });
+    }
+    readBatch();
+  });
+}
+
+async function handleZipFile(file, prefix) {
+  if (typeof JSZip === 'undefined') { alert('JSZip 尚未載入。'); return; }
+  const zip = await JSZip.loadAsync(file); const jobs = [];
+  zip.forEach((relativePath, zipEntry) => {
+    if (!zipEntry.dir && isTargetExt(relativePath) && !isMinified(relativePath) && !pathHasSkipDir(relativePath)) {
+      jobs.push(zipEntry.async('string').then(text => {
+        const displayPath = prefix ? `${prefix}/${relativePath}` : relativePath;
+        const name = relativePath.split('/').pop(); addFile(name, displayPath, text);
+      }));
+    }
+  });
+  await Promise.all(jobs);
+}
+
+function addFile(name, path, content) {
+  const idx = loadedFiles.findIndex(f => f.path === path);
+  if (idx >= 0) loadedFiles[idx] = { name, path, content };
+  else loadedFiles.push({ name, path, content });
+}
+
+function refreshFileList() {
+  const area = document.getElementById('file-list-area'); const chips = document.getElementById('file-chips'); const label = document.getElementById('file-list-label');
+  if (!loadedFiles.length) { area.style.display = 'none'; return; }
+  area.style.display = 'block'; label.innerHTML = `<span>已載入 <strong>${loadedFiles.length}</strong> 個可掃描檔案</span>`;
+  chips.innerHTML = loadedFiles.map((f, i) =>
+    `<span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;padding:4px 10px;border-radius:12px;background:var(--color-background-tertiary);color:var(--color-text-primary);max-width:250px;border:1px solid var(--color-border-secondary);">
+      <i class="ti ti-file-code" style="color:var(--color-text-secondary);" aria-hidden="true"></i>
+      <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escHtml(f.path)}">${escHtml(f.name)}</span>
+      <button onclick="removeFile(${i})" style="background:none;border:none;padding:0;cursor:pointer;color:var(--color-text-tertiary);display:flex;align-items:center;">
+        <i class="ti ti-x" style="font-size:14px;"></i>
+      </button>
+    </span>`
+  ).join('');
+}
+
+function removeFile(i) { loadedFiles.splice(i, 1); refreshFileList(); runCheck(); }
+
+const TARGET_EXTS = ['.html', '.htm', '.js', '.css'];
+function isTargetExt(name) { return TARGET_EXTS.some(e => name.toLowerCase().endsWith(e)); }
+function isMinified(name) { return /\.min\.(js|css)$/i.test(name); }
+function isZip(name) { return name.toLowerCase().endsWith('.zip'); }
+const SKIP_DIRS = ['node_modules', '.git', 'dist', 'vendor', '__pycache__'];
+function shouldSkipDir(name) { return SKIP_DIRS.includes(name.toLowerCase()); }
+function pathHasSkipDir(p) { return SKIP_DIRS.some(d => p.toLowerCase().includes(`/${d}/`) || p.toLowerCase().startsWith(`${d}/`)); }
+function entryToFile(entry) { return new Promise((res, rej) => entry.file(res, rej)); }
+
+function scanContent(content, filePath, activeRules) {
+  const lines = content.split('\n');
+  const issues = [];
+  const summary = { inline_js: 0, inline_style: 0, eval: 0, package: 0, total: 0 };
+  const ext = '.' + filePath.split('.').pop().toLowerCase();
+
+  activeRules.forEach(rule => {
+    if (rule.target_extensions && !rule.target_extensions.includes(ext)) {
+      return;
+    }
+
+    lines.forEach((lineContent, idx) => {
+      rule.regex.lastIndex = 0;
+      let match;
+      while ((match = rule.regex.exec(lineContent)) !== null) {
+        summary.total++;
+        if (rule.type === 'inline_js') summary.inline_js++;
+        if (rule.type === 'inline_style') summary.inline_style++;
+        if (rule.type === 'unsafe_eval') summary.eval++;
+        if (rule.type === 'banned_package') summary.package++;
+        issues.push({
+          type: rule.type, label: rule.label, severity: rule.severity,
+          lineNum: idx + 1,
+          lineText: lineContent.trim().substring(0, 100),
+          description: rule.description, fix: rule.fix
+        });
+      }
+    });
+  });
+  return { filePath, summary, issues };
+}
+
+function runCheck() {
+  const isIgnore = document.getElementById('ignore-engineering').checked;
+  const activeRules = CURRENT_RULES.filter(r => !(isIgnore && r.category === 'engineering'));
+  const pasteCode = (document.getElementById('code-input') || {}).value || '';
+
+  let sources = [];
+  if (loadedFiles.length) {
+    sources = loadedFiles.map(f => ({ name: f.name, path: f.path, content: f.content }));
+  } else if (pasteCode.trim()) {
+    sources = [{ name: 'index.html', path: 'index.html', content: pasteCode }];
+  } else {
+    alert('請先拖放 ZIP / 資料夾，或展開下方貼上程式碼。'); return;
+  }
+
+  const fileResults = sources.map(s => scanContent(s.content, s.path, activeRules));
+  const grand = { inline_js: 0, inline_style: 0, eval: 0, package: 0, total: 0 };
+  
+  fileResults.forEach(r => {
+    grand.inline_js += r.summary.inline_js;
+    grand.inline_style += r.summary.inline_style;
+    grand.eval += r.summary.eval;
+    grand.package += r.summary.package;
+    grand.total += r.summary.total;
+  });
+
+  updateDashboard(grand, sources.length, isIgnore);
+  renderResult({ grand, fileResults, fileCount: sources.length, isIgnore });
+}
+
+function updateDashboard(grand, fileCount, isIgnore) {
+  document.getElementById('dash-total-files').textContent = fileCount;
+  const totalIssuesEl = document.getElementById('dash-total-issues');
+  totalIssuesEl.textContent = grand.total;
+  totalIssuesEl.style.color = grand.total > 0 ? 'var(--color-critical)' : 'var(--color-low)';
+  document.getElementById('dash-donut-total').textContent = grand.total;
+
+  const crit = isIgnore ? 0 : (grand.eval + grand.package);
+  const high = grand.inline_js;
+  const med = grand.inline_style;
+
+  document.getElementById('dash-crit-val').textContent = isIgnore ? '—' : crit;
+  document.getElementById('dash-high-val').textContent = high;
+  document.getElementById('dash-med-val').textContent = med;
+
+  const total = grand.total;
+  const donutEl = document.getElementById('dash-donut');
+  
+  if (total === 0) {
+    donutEl.style.background = `conic-gradient(var(--color-low) 0% 100%)`;
+  } else {
+    const critPct = (crit / total) * 100; const highPct = (high / total) * 100; const medPct = (med / total) * 100;
+    let currentDegree = 0; let gradientParts = [];
+    if (crit > 0) { gradientParts.push(`var(--color-critical) ${currentDegree}% ${currentDegree + critPct}%`); currentDegree += critPct; }
+    if (high > 0) { gradientParts.push(`var(--color-high) ${currentDegree}% ${currentDegree + highPct}%`); currentDegree += highPct; }
+    if (med > 0) { gradientParts.push(`var(--color-medium) ${currentDegree}% ${currentDegree + medPct}%`); }
+    donutEl.style.background = `conic-gradient(${gradientParts.join(', ')})`;
+  }
+}
+
+const AUTO_EXPAND_THRESHOLD = 10; 
+
+function toggleAllDetails(open) {
+  document.querySelectorAll('#result-content details').forEach(d => {
+    d.open = open;
+  });
+}
+
+function renderResult({ grand, fileResults, fileCount, isIgnore }) {
+  const resultArea = document.getElementById('result-area'); const titleEl = document.getElementById('result-title'); const contentEl = document.getElementById('result-content');
+  resultArea.style.display = 'block';
+  const failedFiles = fileResults.filter(r => r.summary.total > 0);
+
+  if (grand.total === 0) {
+    titleEl.innerHTML = '<i class="ti ti-circle-check" style="color:var(--color-low);font-size:24px;"></i> 檢測通過，未發現違規項目';
+    contentEl.innerHTML = `<div style="padding:16px; background:rgba(16,185,129,0.1); border:1px solid var(--color-low); border-radius:var(--border-radius-md); color:var(--color-low); font-size:13px;">已掃描 ${fileCount} 個檔案，在當前過濾範疇下完全符合合規標準。</div>`;
+    return;
+  }
+
+  const sortedFiles = [...failedFiles].sort((a, b) => b.summary.total - a.summary.total);
+
+  titleEl.innerHTML = `
+    <div style="display:flex; align-items:center; justify-content:space-between; width:100%; flex-wrap:wrap; gap:8px;">
+      <span style="display:flex; align-items:center; gap:8px;">
+        <i class="ti ti-alert-triangle" style="color:var(--color-critical);font-size:24px;"></i>
+        共 ${failedFiles.length} 個檔案發現違規
+        <span style="font-size:11px; color:var(--color-text-tertiary); font-weight:400;">（已依違規數排序，≥${AUTO_EXPAND_THRESHOLD} 項自動展開）</span>
+      </span>
+      <span style="display:flex; gap:6px;">
+        <button onclick="toggleAllDetails(true)" style="padding:4px 12px; font-size:12px; background:transparent; border:1px solid var(--color-border-secondary); color:var(--color-text-secondary); border-radius:6px; cursor:pointer; display:flex; align-items:center; gap:4px;">
+          <i class="ti ti-chevrons-down"></i> 全部展開
+        </button>
+        <button onclick="toggleAllDetails(false)" style="padding:4px 12px; font-size:12px; background:transparent; border:1px solid var(--color-border-secondary); color:var(--color-text-secondary); border-radius:6px; cursor:pointer; display:flex; align-items:center; gap:4px;">
+          <i class="ti ti-chevrons-up"></i> 全部收合
+        </button>
+      </span>
+    </div>`;
+
+  let html = '';
+
+  sortedFiles.forEach(fr => {
+    const shortPath = fr.filePath.length > 60 ? '…' + fr.filePath.slice(-57) : fr.filePath;
+    const autoOpen = fr.summary.total >= AUTO_EXPAND_THRESHOLD;
+
+    let badgeBg, badgeColor;
+    if (fr.summary.total >= 10) {
+      badgeBg = 'rgba(244,63,94,0.15)'; badgeColor = 'var(--color-critical)';
+    } else if (fr.summary.total >= 5) {
+      badgeBg = 'rgba(249,115,22,0.15)'; badgeColor = 'var(--color-high)';
+    } else {
+      badgeBg = 'rgba(234,179,8,0.15)'; badgeColor = 'var(--color-medium)';
+    }
+
+    html += `<details style="border: 1px solid var(--color-border-tertiary); border-radius: var(--border-radius-md); margin-bottom: 8px; overflow: hidden; background: var(--color-background-primary);"${autoOpen ? ' open' : ''}>
+      <summary style="display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; cursor: pointer; background: var(--color-background-secondary); list-style: none; border-bottom: 1px solid var(--color-border-tertiary);">
+        <span style="display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 500; color: var(--color-text-primary);"><i class="ti ti-file-code" style="color: var(--color-text-secondary);" aria-hidden="true"></i>${escHtml(shortPath)}</span>
+        <span style="font-size: 12px; font-weight: 600; padding: 2px 10px; border-radius: 12px; background: ${badgeBg}; color: ${badgeColor};">${fr.summary.total} 項違規</span>
+      </summary><div style="padding: 4px 0;">`;
+
+    fr.issues.forEach(issue => {
+      let sevColor = 'var(--color-medium)';
+      if(issue.severity === 'high') sevColor = 'var(--color-high)';
+      if(issue.severity === 'critical') sevColor = 'var(--color-critical)';
+
+      html += `<div style="display: grid; grid-template-columns: 50px minmax(140px, max-content) minmax(0, 1fr); gap: 16px; padding: 10px 16px; align-items: start; border-bottom: 1px solid var(--color-border-tertiary); transition: background 0.15s;" onmouseover="this.style.background='var(--color-background-secondary)'" onmouseout="this.style.background='transparent'">
+        <div style="font-size: 12px; color: var(--color-text-secondary); text-align: right; font-family: var(--font-mono); padding-top: 4px;">Ln ${issue.lineNum}</div>
+        <div style="font-size: 12px; font-weight: 500; color: ${sevColor}; display: flex; align-items: center; gap: 6px; padding-top: 4px;"><i class="ti ti-alert-circle-filled" style="font-size: 14px;"></i>${escHtml(issue.label)}<i class="ti ti-info-circle" style="color: var(--color-text-tertiary); font-size: 14px; cursor: help;" title="${escHtml(issue.description)}"></i></div>
+        <div style="min-width: 0; position: relative;">
+          <code style="display: block; font-family: var(--font-mono); font-size: 12px; color: var(--color-text-primary); margin-bottom: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; background: var(--color-background-tertiary); padding: 4px 8px; border-radius: 4px; border: 1px solid var(--color-border-tertiary); cursor: copy;" onclick="navigator.clipboard.writeText('${escHtml(issue.lineText)}'); alert('已複製程式碼')">${escHtml(issue.lineText)}</code>
+          <div style="font-size: 12px; color: var(--color-text-secondary); display: flex; gap: 6px; align-items: flex-start;"><i class="ti ti-bulb" style="color: var(--color-low); margin-top: 2px;"></i><span style="line-height: 1.5;">${escHtml(issue.fix)}</span></div>
+        </div>
+      </div>`;
+    });
+    html += `</div></details>`;
+  });
+  contentEl.innerHTML = html;
+}
+
+function resetDashboard() {
+  const isIgnore = document.getElementById('ignore-engineering').checked;
+  document.getElementById('dash-total-files').textContent = '0';
+  document.getElementById('dash-total-issues').textContent = '0';
+  document.getElementById('dash-total-issues').style.color = 'var(--color-text-primary)';
+  document.getElementById('dash-donut-total').textContent = '0';
+  document.getElementById('dash-crit-val').textContent = isIgnore ? '—' : '0';
+  document.getElementById('dash-high-val').textContent = '0';
+  document.getElementById('dash-med-val').textContent = '0';
+  document.getElementById('dash-donut').style.background = 'var(--color-border-secondary)';
+}
+
+function clearAll() {
+  loadedFiles = []; refreshFileList(); const ci = document.getElementById('code-input'); if (ci) ci.value = '';
+  document.getElementById('result-area').style.display = 'none'; resetDashboard();
+  const dz = document.getElementById('drop-zone'); dz.style.borderColor = ''; dz.style.background = 'var(--color-background-secondary)';
+}
+
+function escHtml(str) { return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+</script>
+</body>
+</html>

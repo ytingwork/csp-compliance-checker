@@ -1,0 +1,51 @@
+{
+  "version": "20260528_v1",
+  "last_updated_by": "黃世華",
+  "rules": [
+    {
+      "type": "inline_js",
+      "label": "Inline JS 事件",
+      "category": "ui",
+      "target_extensions": [".html", ".htm"],
+      "regex": "\\b(on(click|load|change|submit|blur|focus|keyup|keydown|mouseover|mouseout|input|reset|error|scroll))\\s*=",
+      "description": "在 HTML 標籤內直接使用 inline 事件監聽器。",
+      "fix": "請將事件抽離，改在外部 JS 使用 addEventListener 進行綁定。"
+    },
+    {
+      "type": "inline_style",
+      "label": "Inline Style",
+      "category": "ui",
+      "target_extensions": [".html", ".htm"],
+      "regex": "\\bstyle\\s*=\\s*[\"'][^\"']*[\"']",
+      "description": "在 HTML 標籤上直接使用 style 屬性定義樣式。",
+      "fix": "建議將樣式抽取至獨立的 CSS 檔案或改用 Class 樣式表控制。"
+    },
+    {
+      "type": "banned_package",
+      "label": "資安政策禁用套件",
+      "category": "ui",
+      "target_extensions": [".html", ".htm", ".js"],
+      "regex": "(?:bootstrap(?:\\.min)?\\.js|jquery-ui(?:\\.min)?\\.js)",
+      "description": "偵測到引入了資安政策中列為禁用的老舊 UI 套件（Bootstrap / jQuery UI）。",
+      "fix": "請確認專案規範，改用符合公司合規標準的元件庫。"
+    },
+    {
+      "type": "banned_font_cdn",
+      "label": "外鏈第三方字型",
+      "category": "ui",
+      "target_extensions": [".html", ".htm", ".css"],
+      "regex": "@import\\s+url\\([\"']?https://[^)]+\\b(font|gstatic)[^)]+[\"']?\\)|<link[^>]+href=[\"']?https://[^\"'>]+\\b(font|gstatic)[^\"'>]+[\"']?",
+      "description": "禁止以 https 外鏈方式引用第三方字型檔。",
+      "fix": "請將字型檔下載至專案本機，改用相對路徑引用。"
+    },
+    {
+      "type": "banned_license",
+      "label": "禁用具傳染性開源授權",
+      "category": "engineering",
+      "target_extensions": [".json"],
+      "regex": "\"license\"\\s*:\\s*\"[^\"]*\\b(GPL|AGPL)\\b[^\"]*\"",
+      "description": "偵測到專案使用了 GPL 或 AGPL 授權套件，可能導致專案原始碼被迫開源。",
+      "fix": "請優先更換為 MIT、Apache 2.0 或 BSD 等寬鬆授權套件；若不確定，請詢問主管。"
+    }
+  ]
+}
