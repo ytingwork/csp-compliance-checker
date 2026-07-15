@@ -3,7 +3,7 @@
 ![GitHub License](https://img.shields.io/badge/license-MIT-green)
 ![Category](https://img.shields.io/badge/Category-UI%20%2F%20Security-blue)
 
-一個專為網頁前端、產品設計驗收（Design QA）與資安團隊打造的 **純前端、零依賴** CSP（Content Security Policy）合規性掃描工具。支援拖放 ZIP、專案資料夾或單段代碼，精準捕捉畫面層與代碼層的违規風險。
+一個專為網頁前端、產品設計驗收（Design QA）與資安團隊打造的 **純前端、零依賴** CSP（Content Security Policy）合規性掃描工具。支援拖放 ZIP、專案資料夾或單段代碼，精準捕捉畫面層與代碼層的違規風險。
 
 ---
 
@@ -25,5 +25,9 @@
 ### 📊 主控制台與數據看板
 *包含精準的總覽統計（Summary）與 Conic-gradient 圓餅圖，直觀呈現 Critical / High / Medium 的違規佔比。*
 
-<img width="1980" height="3073" alt="screencapture-file-Users-cfh01001792-Downloads-csp-compliance-checker-index-html-2026-07-15-12_02_01" src="https://github.com/user-attachments/assets/78aefbce-31c9-4985-9e47-6ee42b73e82c" />
+<img width="1980" height="3005" alt="screencapture-file-Users-cfh01001792-Downloads-csp-compliance-checker-index-html-2026-07-15-14_17_24" src="https://github.com/user-attachments/assets/c19ae8d7-d8da-480c-85c3-097cbc872174" />
 
+### 🟢 檢測通過狀態 (All Clear)
+*當所有掃描檔案皆符合資安與介面合規標準時，控制台將呈現全綠色的成功狀態指標，並附帶標準合規提示。*
+
+<img width="2940" height="1914" alt="screencapture-file-Users-cfh01001792-Downloads-csp-checker-fixed-html-2026-07-14-11_38_29" src="https://github.com/user-attachments/assets/424a2de6-eb5d-4093-aa6a-d31ed0e708f9" />
